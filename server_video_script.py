@@ -1,13 +1,17 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-app = Flask(__name__)
+app = FastAPI()
 
 # Load model and tokenizer once on startup
 model_path = "./phi4_finetuned"
 tokenizer = AutoTokenizer.from_pretrained(model_path)
-model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    model_path, torch_dtype=torch.float16, device_map="auto"
+)
 model.eval()
 
 generation_args = {
@@ -15,19 +19,25 @@ generation_args = {
     "temperature": 0.001,
     "do_sample": True,
     "top_p": 0.9,
-    "repetition_penalty": 1.1
+    "repetition_penalty": 1.1,
 }
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    data = request.json
-    messages = data.get("messages", [])
-    if not messages:
-        return jsonify({"error": "No messages provided"}), 400
+class Message(BaseModel):
+    role: str
+    content: str
 
-    # Format messages using your tokenizer method
+class GenerateRequest(BaseModel):
+    messages: List[Message]
+
+@app.post("/generate")
+async def generate(request: GenerateRequest):
+    messages = request.messages
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages provided")
+
+    # Format messages using your tokenizer method (adjust if needed)
     formatted_prompt = tokenizer.apply_chat_template(
-        messages,
+        [message.dict() for message in messages],
         tokenize=False,
         add_generation_prompt=True
     )
@@ -41,8 +51,5 @@ def generate():
     generated_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
-    return jsonify({"response": response_text})
+    return {"response": response_text}
 
-if __name__ == "__main__":
-    # Run on 0.0.0.0 so Render or any cloud can access it
-    app.run(host="0.0.0.0", port=8080)
