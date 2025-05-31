@@ -1,6 +1,7 @@
 torch
 transformers
-flask
+fastapi
+uvicorn
 peft
 accelerate
 bitsandbytes
