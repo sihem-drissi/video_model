@@ -1,23 +1,54 @@
+import os
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import CodeGenTokenizerFast, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import PeftModel
+import uvicorn
+import psutil
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Load model and tokenizer once on startup
+# Model and tokenizer setup
 model_path = "phi4_finetuned/phi4_finetuned"
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-model = AutoModelForCausalLM.from_pretrained(
-    model_path, torch_dtype=torch.float16, device_map="auto"
-)
-model.eval()
+base_model_name = "microsoft/Phi-3.5-mini-instruct"  
+
+try:
+    logger.info(f"Model path: {model_path}")
+    logger.info(f"Files in model path: {os.listdir(model_path)}")
+    logger.info(f"Memory usage before loading: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+    
+    logger.info("Loading tokenizer")
+    tokenizer = CodeGenTokenizerFast.from_pretrained(model_path)
+    logger.info(f"Memory usage after tokenizer: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+    
+    logger.info("Loading base model")
+    quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        quantization_config=quantization_config,
+        device_map="auto"
+    )
+    logger.info(f"Memory usage after base model: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+    
+    logger.info("Loading PEFT model")
+    model = PeftModel.from_pretrained(base_model, model_path)
+    model.eval()
+    logger.info(f"Memory usage after PEFT model: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+    logger.info("Model and tokenizer loaded successfully")
+except Exception as e:
+    logger.error(f"Failed to load model/tokenizer: {str(e)}")
+    raise
 
 generation_args = {
     "max_new_tokens": 1000,
     "temperature": 0.001,
-    "do_sample": False,  # deterministic due to low temperature
+    "do_sample": False,
     "top_p": 0.9,
     "repetition_penalty": 1.1,
 }
@@ -51,3 +82,8 @@ async def generate(request: GenerateRequest):
     response_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
     return {"response": response_text}
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"Starting uvicorn on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
