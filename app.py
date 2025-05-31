@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -17,7 +17,7 @@ model.eval()
 generation_args = {
     "max_new_tokens": 1000,
     "temperature": 0.001,
-    "do_sample": True,
+    "do_sample": False,  # deterministic due to low temperature
     "top_p": 0.9,
     "repetition_penalty": 1.1,
 }
@@ -35,7 +35,6 @@ async def generate(request: GenerateRequest):
     if not messages:
         raise HTTPException(status_code=400, detail="No messages provided")
 
-    # Format messages using your tokenizer method (adjust if needed)
     formatted_prompt = tokenizer.apply_chat_template(
         [message.dict() for message in messages],
         tokenize=False,
@@ -52,4 +51,3 @@ async def generate(request: GenerateRequest):
     response_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
     return {"response": response_text}
-
