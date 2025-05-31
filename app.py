@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 app = FastAPI()
 
 # Load model and tokenizer once on startup
-model_path = "./phi4_finetuned"
+model_path = "phi4_finetuned/phi4_finetuned"
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 model = AutoModelForCausalLM.from_pretrained(
     model_path, torch_dtype=torch.float16, device_map="auto"
