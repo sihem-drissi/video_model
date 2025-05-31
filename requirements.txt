@@ -1,0 +1,6 @@
+torch
+transformers
+flask
+peft
+accelerate
+bitsandbytes
