@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # Model and tokenizer setup
-model_path = "phi4_finetuned/phi4_finetuned"
-base_model_name = "microsoft/Phi-3.5-mini-instruct"  
+model_path = "/code/phi4_finetuned/phi4_finetuned"  # AML scoring directory
+base_model_name = "Salesforce/codegen-350M-mono"  # Confirm from adapter_config.json
 
 try:
     logger.info(f"Model path: {model_path}")
     logger.info(f"Files in model path: {os.listdir(model_path)}")
     logger.info(f"Memory usage before loading: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
     
     logger.info("Loading tokenizer")
     tokenizer = CodeGenTokenizerFast.from_pretrained(model_path)
@@ -32,7 +33,7 @@ try:
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         quantization_config=quantization_config,
-        device_map="auto"
+        device_map="cuda"  # Use GPU
     )
     logger.info(f"Memory usage after base model: {psutil.Process().memory_info().rss / 1024 / 1024} MB")
     
@@ -72,7 +73,7 @@ async def generate(request: GenerateRequest):
         add_generation_prompt=True
     )
 
-    inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
+    inputs = tokenizer(formatted_prompt, return_tensors="pt").to("cuda")  # Move to GPU
 
     with torch.no_grad():
         outputs = model.generate(**inputs, **generation_args)
@@ -82,8 +83,3 @@ async def generate(request: GenerateRequest):
     response_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
     return {"response": response_text}
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    logger.info(f"Starting uvicorn on port {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
